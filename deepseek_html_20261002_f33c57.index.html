@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<title>KYIV OSINT RADAR v14.45.0</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+<style>
+:root{
+  --bg:#0a0f14;--panel:rgba(14,20,26,.94);--panel-solid:#0e141a;
+  --text:#e8f0f5;--muted:#8fa5b2;--accent:#3b82f6;--danger:#dc2626;--ok:#35d07f;
+  --border:rgba(120,140,160,.18);
+  --safe-top:env(safe-area-inset-top,0px);--safe-bottom:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;width:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0a0f14;color:var(--text);-webkit-tap-highlight-color:transparent}
+#app{position:absolute;inset:0;display:flex;flex-direction:column}
+
+.header{height:52px;background:#0a0f14;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 14px;padding-top:var(--safe-top);z-index:1000;flex:0 0 auto;font-size:13px}
+.logo{font-weight:800;letter-spacing:.14em;font-size:14px;display:flex;align-items:center;gap:9px;white-space:nowrap;color:#fff;text-transform:uppercase}
+.header-right{display:flex;align-items:center;gap:10px}
+.status{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);font-weight:800;letter-spacing:.08em}
+.status-dot{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 8px var(--ok);transition:background .3s,box-shadow .3s}
+.status-dot.err{background:#ef4444;box-shadow:0 0 8px #ef4444}
+.status-dot.warn{background:#f59e0b;box-shadow:0 0 8px #f59e0b}
+
+.region-plate{position:absolute;left:14px;top:calc(52px + var(--safe-top) + 10px);z-index:950;color:#cbd5e1;font-size:12px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;padding-bottom:8px;border-bottom:2px solid rgba(200,210,220,.35);pointer-events:none;user-select:none}
+
+#map{flex:1;min-height:0;width:100%;background:#0a0f14}
+
+.top-alert{position:absolute;top:calc(52px + var(--safe-top) + 10px);left:14px;right:14px;z-index:4600;border-radius:10px;overflow:hidden;display:none;box-shadow:0 8px 28px rgba(0,0,0,.6);backdrop-filter:blur(10px)}
+.top-alert.show{display:block;animation:alertIn .3s ease-out}
+@keyframes alertIn{from{transform:translateY(-8px);opacity:0}to{transform:translateY(0);opacity:1}}
+.top-alert.ballistic{background:linear-gradient(90deg,#7f1d1d,#dc2626,#7f1d1d);color:#fff;animation:bbPulse .6s ease-in-out infinite;border:1px solid #fca5a5}
+@keyframes bbPulse{0%,100%{background:linear-gradient(90deg,#7f1d1d,#dc2626,#7f1d1d)}50%{background:linear-gradient(90deg,#dc2626,#fca5a5,#dc2626)}}
+.top-alert.impact{background:linear-gradient(90deg,#7c2d12,#ea580c,#7c2d12);color:#fff;border:1px solid #fdba74}
+.top-alert.mass{background:linear-gradient(90deg,#4c1d95,#7c3aed,#4c1d95);color:#fff;border:1px solid #c4b5fd;animation:massPulse 1.2s ease-in-out infinite}
+@keyframes massPulse{0%,100%{background:linear-gradient(90deg,#4c1d95,#7c3aed,#4c1d95)}50%{background:linear-gradient(90deg,#7c3aed,#a78bfa,#7c3aed)}}
+.top-alert-inner{padding:9px 34px 9px 12px;display:flex;align-items:center;gap:10px;font-weight:800;font-size:.86rem;line-height:1.25}
+.top-alert-icon{font-size:1.4rem;flex-shrink:0;line-height:1}
+.top-alert-body{flex:1;min-width:0}
+.top-alert-title{font-weight:800;font-size:.86rem;letter-spacing:.02em;text-shadow:0 1px 2px rgba(0,0,0,.4)}
+.top-alert-place{font-size:.78rem;font-weight:700;margin-top:2px;opacity:.95;text-shadow:0 1px 2px rgba(0,0,0,.4)}
+.top-alert-meta{font-size:.68rem;font-weight:700;opacity:.85;margin-top:2px;text-shadow:0 1px 2px rgba(0,0,0,.4)}
+.top-alert-close{position:absolute;top:6px;right:6px;background:rgba(0,0,0,.25);border:0;color:#fff;width:22px;height:22px;border-radius:50%;font-size:1rem;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700;padding:0}
+
+.mass-banner{position:absolute;top:calc(52px + var(--safe-top) + 10px);left:14px;right:14px;z-index:4620;border-radius:10px;overflow:hidden;display:none;box-shadow:0 8px 28px rgba(0,0,0,.6);background:linear-gradient(135deg,#4c1d95,#7c3aed,#4c1d95);border:1px solid #c4b5fd;color:#fff}
+.mass-banner.show{display:block;animation:alertIn .3s ease-out}
+.mass-banner-inner{padding:10px 34px 10px 12px;display:flex;align-items:flex-start;gap:10px;font-weight:700;font-size:.8rem;line-height:1.35}
+.mass-banner-icon{font-size:1.5rem;flex-shrink:0;line-height:1}
+.mass-banner-body{flex:1;min-width:0}
+.mass-banner-title{font-weight:800;font-size:.86rem;letter-spacing:.02em}
+.mass-banner-line{font-size:.74rem;font-weight:700;margin-top:3px;opacity:.95}
+.mass-banner-line b{color:#fde047}
+.mass-banner-close{position:absolute;top:6px;right:6px;background:rgba(0,0,0,.3);border:0;color:#fff;width:22px;height:22px;border-radius:50%;font-size:1rem;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700;padding:0}
+
+.panel{position:absolute;left:10px;right:10px;bottom:calc(126px + var(--safe-bottom));background:var(--panel-solid);border:1px solid var(--border);border-left:4px solid #22c55e;border-radius:10px;overflow:hidden;z-index:900;display:flex;flex-direction:column;max-height:14vh;transition:max-height .2s ease;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+.panel.collapsed{max-height:40px}
+.panel-header{padding:8px 12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none;height:40px;flex:0 0 40px}
+.panel-title{font-size:12px;font-weight:800;letter-spacing:.10em;display:flex;align-items:center;gap:7px;text-transform:uppercase;color:#e8f0f5}
+.panel-count{font-size:11px;color:var(--muted);font-weight:800;display:flex;align-items:center;gap:5px;letter-spacing:.06em}
+.panel-chev{font-size:.75rem;color:var(--muted);transition:transform .2s}
+.panel.collapsed .panel-chev{transform:rotate(-90deg)}
+.events{overflow-y:auto;flex:1;min-height:0}
+.event{padding:7px 11px;border-bottom:1px solid #132028;cursor:pointer}
+.event:last-child{border-bottom:0}
+.event-top{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.event-type{font-weight:700;font-size:11px;display:flex;align-items:center;gap:5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.event-icon{font-size:12px;line-height:1;flex-shrink:0}
+.event-time{font-size:10px;color:var(--muted);flex-shrink:0;font-weight:700}
+.event-loc{margin-top:2px;font-size:10px;color:#b7c8d2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.event-meta{margin-top:3px;display:flex;gap:3px;flex-wrap:wrap}
+.tag{padding:1px 5px;border-radius:4px;background:#132630;color:#8faab8;font-size:9px;font-weight:700;line-height:1.4}
+.tag.mass{background:rgba(124,58,237,.4);color:#ddd6fe}
+.panel-empty{padding:14px 11px;text-align:center;color:var(--muted);font-size:11px}
+
+.hud-bottom{position:absolute;left:0;right:0;bottom:0;z-index:1000;padding:0 6px calc(var(--safe-bottom) + 4px);pointer-events:none;background:linear-gradient(180deg,rgba(10,15,20,0) 0%,rgba(10,15,20,.85) 30%,rgba(10,15,20,.95) 100%)}
+.hud-bottom>*{pointer-events:auto}
+.btn-row{display:grid;grid-template-columns:repeat(6,1fr);gap:5px;padding:4px 0 0}
+button{background:var(--panel-solid);border:1px solid var(--border);color:var(--text);padding:4px 2px;border-radius:8px;font-size:8.5px;line-height:1.1;cursor:pointer;font-weight:700;min-width:0;height:auto;min-height:52px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;flex:0 0 auto;touch-action:manipulation;letter-spacing:.01em;text-align:center;transition:background .15s,border-color .15s;overflow:hidden}
+button span:first-child{font-size:20px!important;line-height:1}
+button span:last-child{font-size:8.5px;line-height:1.05;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+button:active{background:#1a2632}
+button.danger{color:#fca5a5}
+button.map-toggle.on{background:rgba(37,99,235,.85);color:#fff}
+button.sound-btn.on{color:#4ade80}
+button.sound-btn.muted{color:#f87171}
+button.rings-btn.on{color:#60a5fa}
+button.rings-btn.off{color:#64748b}
+button.siren-btn{color:#f87171}
+button.siren-btn.active{background:#dc2626!important;color:#fff!important;animation:sirenFlash .35s ease-in-out infinite}
+button.strategic-btn.on{background:rgba(250,204,21,.85);color:#1f2937}
+button.infra-btn.on{background:rgba(34,197,94,.85);color:#fff}
+button.mass-btn.on{background:rgba(124,58,237,.9);color:#fff}
+@keyframes sirenFlash{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.8)}50%{box-shadow:0 0 0 6px rgba(220,38,38,0)}}
+
+.dev-signature{position:absolute;bottom:calc(var(--safe-bottom) + 0px);left:0;right:0;text-align:center;font-size:9px;color:#5a6a78;font-weight:500;letter-spacing:.04em;pointer-events:none;z-index:999;font-family:ui-monospace,monospace;padding:0 0 2px}
+
+.leaflet-popup-content-wrapper{background:var(--panel-solid);color:#e8f0f5;border-radius:10px;border:1px solid rgba(148,163,184,.3);box-shadow:0 6px 24px rgba(0,0,0,.6)}
+.leaflet-popup-tip{background:var(--panel-solid)}
+.leaflet-popup-content{margin:9px 11px;font-size:.75rem;line-height:1.4;max-width:250px}
+.leaflet-popup-close-button{color:#94a3b8!important;font-size:18px!important;padding:2px 6px!important}
+.popup-title{font-weight:700;font-size:.82rem;margin-bottom:4px;display:flex;align-items:center;gap:5px}
+.popup-meta{color:#94a3b8;font-size:.68rem}
+.type-uav{color:#f1f5f9}.type-missile,.type-ballistic{color:#f87171}
+.type-fpv{color:#fbbf24}.type-recon{color:#7dd3fc}
+.type-jet_drone{color:#f87171}.type-strategic{color:#facc15;font-weight:800}
+.popup-channels{margin-top:6px;padding-top:5px;border-top:1px solid rgba(148,163,184,.18);font-size:.66rem}
+.popup-channels .ch{display:inline-block;background:rgba(148,163,184,.2);color:#cbd5e1;padding:1px 6px;border-radius:8px;margin:2px 2px 2px 0;border:1px solid rgba(148,163,184,.3)}
+.popup-channels .ch.prio{background:rgba(251,191,36,.25);border-color:rgba(251,191,36,.5);color:#fbbf24}
+.popup-remove-btn{margin-top:8px;width:100%;height:30px;font-size:.75rem;background:rgba(220,38,38,.25);border:1px solid rgba(248,113,113,.5);color:#fca5a5;border-radius:6px;cursor:pointer;font-weight:800}
+
+.threat-wrap{position:relative;width:28px;height:28px}
+.threat-rotate{position:absolute;inset:0;transform-origin:center center;will-change:transform}
+.threat-icon{width:28px;height:28px;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0 0 5px rgba(0,0,0,.5));transform-origin:center center;position:relative;animation:pulse 1.8s ease-in-out infinite;transition:filter .3s ease}
+.threat-icon svg{width:24px;height:24px;display:block}
+@keyframes pulse{0%,100%{filter:drop-shadow(0 0 3px rgba(0,0,0,.5));opacity:1}50%{filter:drop-shadow(0 0 8px rgba(59,130,246,.55));opacity:.92}}
+.threat-icon.confirm-2{filter:drop-shadow(0 0 7px rgba(34,197,94,.9))}
+.threat-icon.confirm-3{filter:drop-shadow(0 0 10px rgba(250,204,21,.95));animation:cPulse 1.3s ease-in-out infinite}
+.threat-icon.confirm-5{filter:drop-shadow(0 0 14px rgba(250,204,21,1));animation:cPulse 1s ease-in-out infinite}
+@keyframes cPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.1)}}
+.threat-icon.falling{animation:fallingBlink .55s ease-in-out infinite}
+@keyframes fallingBlink{0%,100%{filter:drop-shadow(0 0 2px rgba(220,38,38,.9));opacity:1}50%{filter:drop-shadow(0 0 12px rgba(220,38,38,1));opacity:.35}}
+.threat-icon.stale{opacity:.55;filter:grayscale(.4)}
+.threat-icon.threat-pulse{animation:threatPulse 1s ease-in-out infinite}
+@keyframes threatPulse{0%,100%{filter:drop-shadow(0 0 3px rgba(220,38,38,.9));opacity:1}50%{filter:drop-shadow(0 0 12px rgba(220,38,38,1));opacity:.55}}
+.threat-icon.priority-star::after{content:"⭐";position:absolute;top:-10px;left:-6px;font-size:11px;filter:drop-shadow(0 0 3px rgba(251,191,36,1))}
+.count-badge{position:absolute;right:-6px;top:-6px;height:14px;min-width:14px;padding:0 4px;border-radius:7px;background:#ea580c;color:#fff;font-size:9px;font-weight:900;display:flex;align-items:center;justify-content:center;border:1px solid #fff;z-index:5}
+.confirm-badge{position:absolute;left:-6px;top:-6px;height:13px;min-width:13px;padding:0 3px;border-radius:7px;background:#16a34a;color:#fff;font-size:8px;font-weight:900;display:flex;align-items:center;justify-content:center;border:1px solid #fff;z-index:5}
+.confirm-badge::before{content:"✓"}
+.confirm-badge.pending{background:#0ea5e9}
+
+.impact-marker-icon{width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:16px;line-height:1;filter:drop-shadow(0 0 5px rgba(255,120,0,.95)) drop-shadow(0 0 2px rgba(220,38,38,1));animation:impactPop .9s ease-in-out infinite}
+@keyframes impactPop{0%,100%{transform:scale(1) rotate(0)}50%{transform:scale(1.18) rotate(6deg);opacity:.85}}
+.impact-marker{width:36px;height:36px;display:flex;align-items:center;justify-content:center;line-height:1;cursor:pointer}
+.impact-marker svg{width:32px;height:32px;display:block}
+.impact-marker.hit{animation:impactHit 1s ease-in-out infinite;filter:drop-shadow(0 0 14px rgba(220,38,38,1))}
+@keyframes impactHit{0%,100%{transform:scale(1)}50%{transform:scale(1.25);opacity:.85}}
+.arrival-unknown{width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;color:#fbbf24;text-shadow:0 0 6px rgba(251,191,36,.9)}
+.impact-marker.unknown{animation:impactUnknown 1.4s ease-in-out infinite}
+@keyframes impactUnknown{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.15);opacity:.7}}
+
+.err-banner{position:absolute;top:calc(52px + var(--safe-top));left:0;right:0;z-index:5000;background:#b91c1c;color:#fff;padding:8px 10px;font-size:.72rem;display:none}
+.err-banner.show{display:block}
+.err-banner b{font-weight:800}
+.err-banner .err-close{float:right;background:0;border:0;color:#fff;font-size:1.1rem;cursor:pointer;padding:0 4px;line-height:1}
+.toast{position:absolute;left:50%;top:calc(52px + var(--safe-top) + 60px);transform:translateX(-50%);z-index:2000;background:#0e141a;color:#f1f5f9;padding:8px 14px;border-radius:8px;border:1px solid rgba(148,163,184,.4);font-size:.74rem;box-shadow:0 6px 20px rgba(0,0,0,.5);opacity:0;transition:opacity .25s;pointer-events:none;max-width:85vw;text-align:center}
+.toast.show{opacity:1}
+
+.leaflet-control-attribution{font-size:8px!important;background:rgba(10,15,20,.8)!important;color:#64748b!important;padding:2px 5px!important}
+.leaflet-control-zoom a{background:rgba(14,20,26,.9)!important;color:#e8f0f5!important;border-color:#1f3540!important;width:28px!important;height:28px!important;line-height:28px!important;font-size:15px!important}
+.leaflet-control-zoom{top:calc(52px + var(--safe-top) + 10px)!important;right:10px!important}
+
+.settlement-marker{background:transparent;border:0}
+.settlement-dot{width:8px;height:8px;border-radius:50%;background:#22c55e;border:1.5px solid #fff}
+.settlement-dot.city{background:#16a34a;width:11px;height:11px;border-width:2px}
+.settlement-dot.raion{background:#3b82f6;width:9px;height:9px}
+.infra-marker{background:transparent;border:0}
+.infra-bridge{width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:14px;line-height:1;filter:drop-shadow(0 0 4px rgba(96,165,250,.9))}
+.infra-energy{width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:14px;line-height:1;filter:drop-shadow(0 0 4px rgba(250,204,21,.9))}
+
+@media (min-width: 700px){
+  .panel{width:380px;left:14px;right:auto;bottom:calc(126px + var(--safe-bottom))}
+  .top-alert{left:14px;right:auto;width:420px}
+  .mass-banner{left:14px;right:auto;width:420px}
+  .btn-row{max-width:600px;margin:0 auto}
+}
+@media (max-width: 380px){
+  button{font-size:7.5px;min-height:48px;padding:3px 1px}
+  button span:first-child{font-size:18px!important}
+  button span:last-child{font-size:7.5px}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="header">
+    <div class="logo">
+      <svg width="22" height="26" viewBox="0 0 22 26" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
+        <path d="M11 1 L21 4 L21 13 C21 19 16.5 23.5 11 25 C5.5 23.5 1 19 1 13 L1 4 Z" fill="#e8f0f5" stroke="#8fa5b2" stroke-width="1"/>
+        <path d="M11 4 L11 22 M6 9 L16 9 M11 6 L11 12" stroke="#0a0f14" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <span>KYIV OSINT RADAR</span>
+    </div>
+    <div class="header-right">
+      <div class="status">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusText">ЗАГРУЗКА…</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="map"></div>
+  <div class="region-plate" id="regionPlate">УКРАЇНА</div>
+
+  <div class="top-alert" id="topAlert">
+    <button class="top-alert-close" id="topAlertClose" aria-label="Закрити">×</button>
+    <div class="top-alert-inner">
+      <div class="top-alert-icon" id="topAlertIcon">🚨</div>
+      <div class="top-alert-body">
+        <div class="top-alert-title" id="topAlertTitle">—</div>
+        <div class="top-alert-place" id="topAlertPlace" style="display:none">—</div>
+        <div class="top-alert-meta" id="topAlertMeta" style="display:none">—</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mass-banner" id="massBanner">
+    <button class="mass-banner-close" id="massBannerClose" aria-label="Закрити">×</button>
+    <div class="mass-banner-inner">
+      <div class="mass-banner-icon" id="massBannerIcon">🚀</div>
+      <div class="mass-banner-body">
+        <div class="mass-banner-title" id="massBannerTitle">МАСОВАНА ЗАГРОЗА</div>
+        <div class="mass-banner-line" id="massBannerLine1">—</div>
+        <div class="mass-banner-line" id="massBannerLine2" style="display:none">—</div>
+        <div class="mass-banner-line" id="massBannerLine3" style="display:none">—</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="err-banner" id="errBanner">
+    <button class="err-close" onclick="this.parentNode.classList.remove('show')">×</button>
+    <b>Помилка:</b> <span id="errText">—</span>
+  </div>
+
+  <div class="panel collapsed" id="panel">
+    <div class="panel-header" id="panelHeader">
+      <div class="panel-title">▶ ЛЕНТА ПОДІЙ</div>
+      <div class="panel-count">
+        <span id="eventCount">0 подій</span>
+        <span class="panel-chev">▼</span>
+      </div>
+    </div>
+    <div class="events" id="events"></div>
+  </div>
+
+  <div class="hud-bottom">
+    <div class="btn-row">
+      <button type="button" id="btnRefresh" title="Оновити"><span>⟳</span><span>Оновити</span></button>
+      <button type="button" id="btnClear" class="danger" title="Очистити"><span>✕</span><span>Очистити</span></button>
+      <button type="button" id="btnColorToggle" title="Палітра">
+        <span style="position:relative;display:inline-block">🎨<i id="uavColorDot" style="position:absolute;right:-4px;bottom:-2px;width:10px;height:10px;border-radius:50%;border:2px solid #0e141a;background:#ffffff;display:block"></i></span>
+        <span>Палітра</span>
+      </button>
+      <button type="button" class="rings-btn on" id="btnRingsToggle" title="Кільця"><span>🎯</span><span>Кільця</span></button>
+      <button type="button" class="settlements-btn" id="btnSettlements" title="Населені пункти"><span>🏘</span><span>Населені пункти</span></button>
+      <button type="button" class="infra-btn" id="btnInfra" title="Інфраструктура"><span>🏗</span><span>Інфраструктура</span></button>
+      <button type="button" class="sound-btn on" id="soundToggle" title="Звук"><span>🔔</span><span>Звук</span></button>
+      <button type="button" class="siren-btn" id="sirenBtn" title="Сирена"><span>🚨</span><span>Сирена</span></button>
+      <button type="button" class="strategic-btn" id="btnStrategic" title="Стратегічна авіація"><span>✈️</span><span>Стратегічна авіація</span></button>
+      <button type="button" class="mass-btn" id="btnMass" title="Масовані пуски"><span>🚀</span><span>Масовані пуски</span></button>
+      <button type="button" class="map-toggle" id="btnMapToggle" title="Схема/Супутник"><span>🛰</span><span>Супутникова карта</span></button>
+      <button type="button" id="btnZoomUkraine" title="Вся Україна"><span>🇺🇦</span><span>Вся Україна</span></button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <div class="dev-signature">Розробник: А.Павленко 2026</div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+/* ============================================================
+   KYIV OSINT RADAR v14.45.0
+   - Зона: ВСЯ УКРАЇНА (bbox 44–52.5° / 22–40.5°)
+   - Кнопки: 12 (без AI, без Живлення)
+   - Палітра: цветная точка
+   - HUD внизу, компактный
+============================================================ */
+const $=id=>document.getElementById(id);
+const esc=s=>(s||"").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+function showErr(m){try{const b=$("errBanner"),t=$("errText");if(b&&t){t.textContent=String(m||"?");b.classList.add("show");}console.error("[kyiv-radar]",m);}catch(e){}}
+window.addEventListener("error",e=>showErr(e.message));
+window.addEventListener("unhandledrejection",e=>{try{showErr(e.reason?.message||String(e.reason));}catch(x){}});
+
+let lastBallisticAlarmAt=0,topAlertTimer=null;
+let ws=null,wsConnected=false,wsReconnectMs=3000,wsReconnectTimer=null;
+let restFallbackActive=false,pollTimer=null,abortCtrl=null;
+let rafId=null,animRunning=false,map=null,osmLayer=null,currentBase="osm";
+let ringsLayer=null,ringsVisible=true;
+let settlementsVisible=false,strategicVisible=false,infraMode=0;
+let uavColorIdx=0;
+let audioCtx=null,lastSoundAt=0,sirenActiveTimeout=null;
+let feedUpdateTimer=null,settlementMarkers=[],infraMarkers=[];
+let massBannerTimer=null,massBannerActive=false;
+
+const CONFIG={
+  API_THREATS:"https://neptun.in.ua/api/v1/threats",API_ALERTS:"https://neptun.in.ua/api/v1/alerts",API_MESSAGES:"https://neptun.in.ua/api/v1/messages",WS_URL:"wss://neptun.in.ua/api/v1/stream",
+  POLL_MS:5000,WS_RECONNECT_MS:3000,WS_RECONNECT_MAX_MS:60000,
+  KYIV:[50.45,30.52],ZONE_RADIUS_KM:1500,
+  UKRAINE_BBOX:{minLat:44.0,maxLat:52.5,minLon:22.0,maxLon:40.5},
+  UKRAINE_FIT_BOUNDS:[[44.2,22.2],[52.3,40.3]],
+  TILE_URL:"https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+  TILE_URL_REF:"https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}",
+  TILE_URL_SAT:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+  TILE_URL_SAT_REF:"https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+  TILE_ATTR:'Tiles &copy; Esri',
+  TILE_ATTR_SAT:"Tiles &copy; Esri",
+  MIN_CHANNELS_CONFIRM:2,
+  DISMISS_TTL_MS:30*60*1000,
+  MASS_BANNER_TTL_MS:15*60*1000,
+  POPUP_OPTS:{maxWidth:280,maxHeight:300,autoPan:false,autoClose:true,closeOnClick:true,closeButton:true}
+};
+const PRIORITY_CHANNELS=new Set(["kyiv_monitor1","ppo_kiev","kiev_tryvoha","ukrainemonitorzagroz","ukraine_ua_24_7"]);
+const PRIORITY_WEIGHT=3.0;
+const RINGS_KEY="kyiv_rings_v41",SETTLEMENTS_VIS_KEY="kyiv_settlements_v41",STRATEGIC_VIS_KEY="kyiv_strategic_v41";
+const INFRA_MODE_KEY="kyiv_infra_mode_v41";
+const UAV_COLORS=[{id:"white",name:"Білий",hex:"#ffffff"},{id:"orange",name:"Помаранч.",hex:"#fb923c"},{id:"yellow",name:"Жовтий",hex:"#facc15"},{id:"black",name:"Чорний",hex:"#1f2937"}];
+try{const v=localStorage.getItem("kyiv_uav_c_v41");if(v!=null){const i=+v;if(i>=0&&i<4)uavColorIdx=i;}}catch(e){}
+try{const v=localStorage.getItem(RINGS_KEY);if(v==="0")ringsVisible=false;}catch(e){}
+try{const v=localStorage.getItem(SETTLEMENTS_VIS_KEY);if(v==="1")settlementsVisible=true;}catch(e){}
+try{const v=localStorage.getItem(STRATEGIC_VIS_KEY);if(v==="1")strategicVisible=true;}catch(e){}
+try{const v=localStorage.getItem(INFRA_MODE_KEY);if(v!=null){const i=+v;if(i>=0&&i<=3)infraMode=i;}}catch(e){}
+function isPriorityChannel(ch){const k=(ch||"").replace(/^@/,"").toLowerCase().trim();if(PRIORITY_CHANNELS.has(k))return true;for(const p of PRIORITY_CHANNELS)if(k.includes(p))return true;return false;}
+function saveUavColor(){try{localStorage.setItem("kyiv_uav_c_v41",String(uavColorIdx));}catch(e){}}
+function currentUavColor(){return UAV_COLORS[uavColorIdx].hex;}
+
+const KYIV_OBLAST_SETTLEMENTS=[
+["Прип'ять",51.39474302,30.08446583,"Чорнобильська зона","c"],["Чорнобиль",51.27184786,30.22441931,"Чорнобильська зона","c"],
+["Біла Церква",49.80563193,30.10926837,"Білоцерківський","c"],["Терезине",49.85733315,30.10862037,"Білоцерківський","s"],
+["Володарка",49.52395189,29.91275973,"Білоцерківський","s"],["Гребінки",49.95584068,30.17515067,"Білоцерківський","s"],
+["Сквира",49.73079435,29.66402976,"Білоцерківський","c"],["Тараща",49.56066626,30.49540089,"Білоцерківський","c"],
+["Тетіїв",49.37317715,29.67843897,"Білоцерківський","c"],["Узин",49.82016789,30.42185138,"Білоцерківський","c"],
+["Бориспіль",50.3612042,30.95256256,"Бориспільський","c"],["Переяслав",50.07228667,31.45321568,"Бориспільський","c"],
+["Яготин",50.24025082,31.79157062,"Бориспільський","c"],["Баришівка",50.35755065,31.31698645,"Броварський","s"],
+["Березань",50.31236212,31.47751805,"Броварський","c"],["Бровари",50.50655438,30.80095343,"Броварський","c"],
+["Білогородка",50.38342226,30.25516463,"Бучанський","v"],["Бородянка",50.64695206,29.93221968,"Бучанський","s"],
+["Буча",50.55148938,30.21142382,"Бучанський","c"],["Вишневе",50.38625104,30.36581354,"Бучанський","c"],
+["Гостомель",50.57875256,30.26001532,"Бучанський","s"],["Ірпінь",50.51146447,30.23870831,"Бучанський","c"],
+["Макарів",50.45270027,29.80411933,"Бучанський","s"],["Вишгород",50.58786993,30.5017729,"Вишгородський","c"],
+["Іванків",50.93968266,29.89113118,"Вишгородський","s"],["Славутич",51.52103146,30.75931254,"Вишгородський","c"],
+["Богуслав",49.5464611,30.8713407,"Обухівський","c"],["Васильків",50.18442314,30.31563006,"Обухівський","c"],
+["Кагарлик",49.8642776,30.81538338,"Обухівський","c"],["Обухів",50.11393672,30.62464616,"Обухівський","c"],
+["Українка",50.1387578,30.73689237,"Обухівський","c"],["Боярка",50.33615993,30.28336111,"Фастівський","c"],
+["Глеваха",50.26833216,30.32663586,"Фастівський","s"],["Фастів",50.07670738,29.92340123,"Фастівський","c"],
+["Київ",50.4501,30.5234,"Київ","c"],
+["Наливайківка",50.485,29.719,"Київщина","v"],["Носівка",50.932,31.583,"Чернігівщина","s"],
+["Кіпті",51.055,31.153,"Чернігівщина","v"],
+["Чернігів",51.500,31.290,"Чернігівщина","c"],["Ніжин",51.050,31.880,"Чернігівщина","c"],
+["Прилуки",50.590,32.380,"Чернігівщина","c"],["Суми",50.910,34.800,"Сумщина","c"],
+["Шостка",51.870,33.470,"Сумщина","c"],["Конотоп",51.240,33.200,"Сумщина","c"],
+["Харків",49.990,36.230,"Харківщина","c"],["Дніпро",48.460,35.040,"Дніпропетровщина","c"],
+["Запоріжжя",47.840,35.140,"Запоріжжя","c"],["Одеса",46.480,30.730,"Одещина","c"],
+["Миколаїв",46.970,32.000,"Миколаївщина","c"],["Херсон",46.640,32.620,"Херсонщина","c"],
+["Львів",49.840,24.030,"Львівщина","c"],["Вінниця",49.230,28.470,"Вінниччина","c"],
+["Полтава",49.590,34.550,"Полтавщина","c"],["Черкаси",49.440,32.060,"Черкащина","c"],
+["Житомир",50.250,28.660,"Житомирщина","c"],["Рівне",50.620,26.250,"Рівненщина","c"],
+["Луцьк",50.750,25.340,"Волинь","c"],["Ужгород",48.620,22.290,"Закарпаття","c"],
+["Івано-Франківськ",48.920,24.710,"Івано-Франківщина","c"],["Тернопіль",49.550,25.600,"Тернопільщина","c"],
+["Хмельницький",49.420,26.980,"Хмельниччина","c"],["Чернівці",48.290,25.940,"Буковина","c"],
+["Кропивницький",48.510,32.260,"Кіровоградщина","c"],["Кривий Ріг",47.910,33.390,"Дніпропетровщина","c"],
+["Маріуполь",47.090,37.550,"Донеччина","c"],["Краматорськ",48.740,37.580,"Донеччина","c"],
+["Слов'янськ",48.850,37.600,"Донеччина","c"],["Сєвєродонецьк",48.950,38.490,"Луганщина","c"],
+["Лисичанськ",48.900,38.440,"Луганщина","c"],["Сімферополь",44.950,34.100,"Крим","c"],
+["Севастополь",44.610,33.530,"Крим","c"],["Керч",45.350,36.470,"Крим","c"],
+["Ялта",44.500,34.170,"Крим","c"],["Євпаторія",45.190,33.360,"Крим","c"],
+["Джанкой",45.710,34.390,"Крим","c"],
+["Троєщина",50.510,30.600,"Київ","district"],["Лісовий масив",50.478,30.631,"Київ","district"],
+["Дарницька ТЕЦ",50.448,30.643,"Київ","infra"],["Мінський масив",50.519,30.462,"Київ","district"],
+["Оболонь",50.506,30.499,"Київ","district"],["Русанівка",50.439,30.598,"Київ","district"],
+["Березняки",50.429,30.606,"Київ","district"],["Дарниця",50.440,30.630,"Київ","district"],
+["Осокорки",50.400,30.620,"Київ","district"],["Позняки",50.410,30.630,"Київ","district"],
+["ДВРЗ",50.440,30.650,"Київ","district"],["Бортничі",50.380,30.700,"Київ","district"],
+["Харківський масив",50.403,30.655,"Київ","district"],["Видубичі",50.420,30.560,"Київ","district"],
+["Печерськ",50.421,30.549,"Київ","district"],["Поділ",50.469,30.517,"Київ","district"],
+["Нивки",50.459,30.406,"Київ","district"],["Виноградар",50.510,30.420,"Київ","district"],
+["Теремки",50.367,30.454,"Київ","district"],["Жуляни",50.402,30.450,"Київ","district"],
+["Голосіїв",50.327,30.567,"Київ","district"],["Феофанія",50.350,30.480,"Київ","district"],
+["Мишоловка",50.370,30.520,"Київ","district"],["Пирогів",50.350,30.550,"Київ","district"],
+["Чабани",50.340,30.430,"Київщина","s"],["ТЕЦ-5",50.393,30.569,"Київ","infra"],
+["ТЕЦ-6",50.530,30.660,"Київ","infra"]
+];
+
+const energyDatabase=[
+{id:"energy_001",name:"Київська ТЕЦ-5",type:"power_plant",category:"CHP",location:"Київ",lat:50.393,lng:30.569,status:"active"},
+{id:"energy_002",name:"Київська ТЕЦ-6",type:"power_plant",category:"CHP",location:"Київ",lat:50.532,lng:30.662,status:"active"},
+{id:"energy_003",name:"Дарницька ТЕЦ",type:"power_plant",category:"CHP",location:"Київ",lat:50.447,lng:30.640,status:"active"},
+{id:"energy_006",name:"Трипільська ТЕС",type:"power_plant",category:"thermal",location:"Українка",lat:50.163,lng:30.746,status:"active"},
+{id:"energy_007",name:"Білоцерківська ТЕЦ",type:"power_plant",category:"CHP",location:"Біла Церква",lat:49.796,lng:30.117,status:"active"},
+{id:"energy_011",name:"Київська ГЕС",type:"hydro",category:"HPP",location:"Вишгород",lat:50.584,lng:30.488,status:"active"},
+{id:"energy_012",name:"Київська ГАЕС",type:"hydro",category:"PSP",location:"Вишгород",lat:50.585,lng:30.490,status:"active"},
+{id:"energy_020",name:"Запорізька АЕС",type:"power_plant",category:"nuclear",location:"Енергодар",lat:47.512,lng:34.585,status:"active"},
+{id:"energy_021",name:"Південноукраїнська АЕС",type:"power_plant",category:"nuclear",location:"Южноукраїнськ",lat:47.816,lng:31.217,status:"active"},
+{id:"energy_022",name:"Хмельницька АЕС",type:"power_plant",category:"nuclear",location:"Нетішин",lat:50.302,lng:26.649,status:"active"},
+{id:"energy_023",name:"Рівненська АЕС",type:"power_plant",category:"nuclear",location:"Вараш",lat:51.328,lng:25.891,status:"active"},
+{id:"energy_024",name:"Бурштинська ТЕС",type:"power_plant",category:"thermal",location:"Бурштин",lat:49.207,lng:24.666,status:"active"},
+{id:"energy_025",name:"Ладижинська ТЕС",type:"power_plant",category:"thermal",location:"Ладижин",lat:48.681,lng:29.218,status:"active"},
+{id:"energy_026",name:"Придніпровська ТЕС",type:"power_plant",category:"thermal",location:"Дніпро",lat:48.413,lng:35.101,status:"active"},
+{id:"energy_027",name:"Криворізька ТЕС",type:"power_plant",category:"thermal",location:"Кривий Ріг",lat:47.874,lng:33.289,status:"active"},
+{id:"energy_028",name:"Зміївська ТЕС",type:"power_plant",category:"thermal",location:"Слобожанське",lat:49.584,lng:36.262,status:"active"},
+{id:"energy_029",name:"Дніпровська ГЕС",type:"hydro",category:"HPP",location:"Запоріжжя",lat:47.869,lng:35.088,status:"active"},
+{id:"energy_030",name:"Каховська ГЕС",type:"hydro",category:"HPP",location:"Нова Каховка",lat:46.777,lng:33.370,status:"destroyed"},
+{id:"energy_031",name:"Кременчуцька ГЕС",type:"hydro",category:"HPP",location:"Світловодськ",lat:49.077,lng:33.249,status:"active"},
+{id:"energy_032",name:"Дністровська ГЕС",type:"hydro",category:"HPP",location:"Новодністровськ",lat:48.586,lng:27.470,status:"active"},
+{id:"energy_033",name:"Дністровська ГАЕС",type:"hydro",category:"PSP",location:"Новодністровськ",lat:48.510,lng:27.480,status:"active"},
+{id:"energy_034",name:"Ташлицька ГАЕС",type:"hydro",category:"PSP",location:"Южноукраїнськ",lat:47.782,lng:31.201,status:"active"},
+{id:"energy_035",name:"Канівська ГЕС",type:"hydro",category:"HPP",location:"Канів",lat:49.762,lng:31.465,status:"active"}
+];
+
+const infrastructureObjects=[
+{id:"tec_6",name:"Київська ТЕЦ-6",aliases:["ТЕЦ-6"],type:"power_plant",category:"CHP",district:"Деснянський",lat:50.531699,lng:30.662307,radius:1000,source:"GEM",status:"active"},
+{id:"tec_5",name:"Київська ТЕЦ-5",aliases:["ТЕЦ-5"],type:"power_plant",category:"CHP",district:"Голосіївський",lat:50.393170,lng:30.569477,radius:1000,source:"GEM",status:"active"},
+{id:"tec_4",name:"Дарницька ТЕЦ-4",aliases:["ТЕЦ-4"],type:"power_plant",category:"CHP",district:"Дніпровський",lat:50.446638,lng:30.639666,radius:1000,source:"Locator",status:"active"},
+{id:"zaes",name:"Запорізька АЕС",type:"nuclear",category:"nuclear",district:"Енергодар",lat:47.512000,lng:34.585000,radius:3000,source:"Energoatom",status:"active"},
+{id:"puaes",name:"Південноукраїнська АЕС",type:"nuclear",category:"nuclear",district:"Южноукраїнськ",lat:47.816000,lng:31.217000,radius:3000,source:"Energoatom",status:"active"},
+{id:"khaes",name:"Хмельницька АЕС",type:"nuclear",category:"nuclear",district:"Нетішин",lat:50.302000,lng:26.649000,radius:3000,source:"Energoatom",status:"active"},
+{id:"raes",name:"Рівненська АЕС",type:"nuclear",category:"nuclear",district:"Вараш",lat:51.328000,lng:25.891000,radius:3000,source:"Energoatom",status:"active"}
+];
+
+function haversineKm(a,b,c,d){const R=6371,toR=x=>x*Math.PI/180;const dLat=toR(c-a),dLon=toR(d-b);const x=Math.sin(dLat/2)**2+Math.cos(toR(a))*Math.cos(toR(c))*Math.sin(dLon/2)**2;return 2*R*Math.asin(Math.sqrt(x));}
+function bearingBetween(lat1,lon1,lat2,lon2){const φ1=lat1*Math.PI/180,φ2=lat2*Math.PI/180,Δλ=(lon2-lon1)*Math.PI/180;const y=Math.sin(Δλ)*Math.cos(φ2);const x=Math.cos(φ1)*Math.sin(φ2)-Math.sin(φ1)*Math.cos(φ2)*Math.cos(Δλ);return(Math.atan2(y,x)*180/Math.PI+360)%360;}
+function showToast(msg,ms=1800){const t=$("toast");if(!t)return;t.textContent=msg;t.classList.add("show");clearTimeout(t._tm);t._tm=setTimeout(()=>t.classList.remove("show"),ms);}
+
+/* ★★★ РАСШИРЕННАЯ ЗОНА: ВСЯ УКРАИНА ★★★ */
+function inZone(lat,lon){
+  if(lat==null||lon==null)return false;
+  const b=CONFIG.UKRAINE_BBOX;
+  if(lat>=b.minLat&&lat<=b.maxLat&&lon>=b.minLon&&lon<=b.maxLon)return true;
+  return haversineKm(CONFIG.KYIV[0],CONFIG.KYIV[1],lat,lon)<=CONFIG.ZONE_RADIUS_KM;
+}
+
+function formatEta(m){if(m==null)return"—";if(m<0.5)return"<1 хв";if(m<60)return`~${Math.round(m)} хв`;return`~${Math.floor(m/60)} год ${Math.round(m%60)} хв`;}
+function totalWeightOf(set){let w=0;for(const ch of set)w+=channelWeight(ch);return w;}
+function channelWeight(name){if(isPriorityChannel(name))return PRIORITY_WEIGHT;return 1.0;}
+function channelClass(name){return isPriorityChannel(name)?"prio":"";}
+function hasPrioritySource(channels){for(const ch of channels)if(isPriorityChannel(ch))return true;return false;}
+
+/* MAP */
+try{map=L.map("map",{center:CONFIG.KYIV,zoom:7,zoomControl:false,attributionControl:true});}catch(e){showErr("Leaflet: "+e.message);}
+L.control.zoom({position:"topright"}).addTo(map);
+if(map){
+  osmLayer=L.tileLayer(CONFIG.TILE_URL,{maxZoom:16,attribution:CONFIG.TILE_ATTR});
+  osmLayer.addTo(map);
+  L.tileLayer(CONFIG.TILE_URL_REF,{maxZoom:16,opacity:.85}).addTo(map);
+  map.fitBounds(CONFIG.UKRAINE_FIT_BOUNDS,{padding:[10,10]});
+}
+const threatLayer=map?L.layerGroup().addTo(map):null;
+const msgThreatLayer=map?L.layerGroup().addTo(map):null;
+const impactLayer=map?L.layerGroup().addTo(map):null;
+const settlementsLayer=map?L.layerGroup():null;
+const strategicLayer=map?L.layerGroup():null;
+const infraLayer=map?L.layerGroup():null;
+const baseSat=map?L.layerGroup():null;
+if(map){
+  L.tileLayer(CONFIG.TILE_URL_SAT,{maxZoom:19,attribution:CONFIG.TILE_ATTR_SAT}).addTo(baseSat);
+  L.tileLayer(CONFIG.TILE_URL_SAT_REF,{maxZoom:19,opacity:.9}).addTo(baseSat);
+}
+
+/* Рамка Украины + прицел на Киеве */
+if(map){
+  ringsLayer=L.layerGroup();
+  L.rectangle([[44.2,22.2],[52.3,40.3]],{color:"#3b82f6",weight:2,opacity:.65,fill:false,dashArray:"6 6",interactive:false}).addTo(ringsLayer);
+  L.circle(CONFIG.KYIV,{radius:250*1000,color:"#dc2626",weight:1.4,opacity:.7,fill:false,dashArray:"6 6",interactive:false}).addTo(ringsLayer);
+  L.circleMarker(CONFIG.KYIV,{radius:10,color:"#dc2626",weight:2,opacity:1,fillColor:"#dc2626",fillOpacity:.25,interactive:false}).addTo(ringsLayer);
+  L.circleMarker(CONFIG.KYIV,{radius:4,color:"#dc2626",weight:2,opacity:1,fillColor:"#dc2626",fillOpacity:1,interactive:false}).addTo(ringsLayer);
+  const size=0.02;
+  L.polyline([[CONFIG.KYIV[0]-size,CONFIG.KYIV[1]],[CONFIG.KYIV[0]+size,CONFIG.KYIV[1]]],{color:"#dc2626",weight:1.6,opacity:.9,interactive:false}).addTo(ringsLayer);
+  L.polyline([[CONFIG.KYIV[0],CONFIG.KYIV[1]-size],[CONFIG.KYIV[0],CONFIG.KYIV[1]+size]],{color:"#dc2626",weight:1.6,opacity:.9,interactive:false}).addTo(ringsLayer);
+  if(ringsVisible)ringsLayer.addTo(map);
+}
+
+/* SVG */
+function uavSvg(color){const c=color||"#ffffff";const stroke=(c==="#1f2937")?"#f9fafb":"#1a1a1a";return`<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg"><path d="M20 4 L30 22 L24 24 L24 32 L20 30 L16 32 L16 24 L10 22 Z" fill="${c}" stroke="${stroke}" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 20 L6 26 L10 27 Z" fill="${c}" stroke="${stroke}" stroke-width="1.4" stroke-linejoin="round"/><path d="M28 20 L34 26 L30 27 Z" fill="${c}" stroke="${stroke}" stroke-width="1.4" stroke-linejoin="round"/></svg>`;}
+function reconSvg(color){const c=color||"#3b82f6";const stroke=(c==="#1f2937")?"#f9fafb":"#1a1a1a";return`<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg"><path d="M20 4 L30 22 L24 24 L24 32 L20 30 L16 32 L16 24 L10 22 Z" fill="${c}" stroke="${stroke}" stroke-width="1.8" stroke-linejoin="round"/><circle cx="20" cy="18" r="3" fill="#fff" stroke="${stroke}" stroke-width="0.8"/></svg>`;}
+function geranSvg(color){const c=color||"#dc2626";const stroke=(c==="#1f2937")?"#f9fafb":"#7f1d1d";return`<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg"><path d="M20 4 L30 22 L24 24 L24 32 L20 30 L16 32 L16 24 L10 22 Z" fill="${c}" stroke="${stroke}" stroke-width="1.8" stroke-linejoin="round"/><circle cx="20" cy="18" r="2.5" fill="#fff" stroke="${stroke}" stroke-width="0.8"/></svg>`;}
+function jetDroneSvg(color){const c=color||"#dc2626";const stroke=(c==="#1f2937")?"#f9fafb":"#450a0a";return`<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg"><path d="M20 4 L30 22 L24 24 L24 32 L20 30 L16 32 L16 24 L10 22 Z" fill="${c}" stroke="${stroke}" stroke-width="1.8" stroke-linejoin="round"/><circle cx="20" cy="18" r="3" fill="#fff" stroke="${stroke}" stroke-width="0.8"/><path d="M14 6 L14 12 M26 6 L26 12" stroke="#fbbf24" stroke-width="1.6" stroke-linecap="round"/></svg>`;}
+function rocketSvg(c){return`<svg viewBox="0 0 24 40" xmlns="http://www.w3.org/2000/svg"><path d="M12 1 C14 1 16 6 16 12 L16 26 L19 32 L16 30 L16 34 L12 38 L8 34 L8 30 L5 32 L8 26 L8 12 C8 6 10 1 12 1 Z" fill="${c||"#dc2626"}" stroke="#1a1a1a" stroke-width="1.1" stroke-linejoin="round"/><circle cx="12" cy="10" r="1.6" fill="#fff" stroke="#1a1a1a" stroke-width="0.6"/></svg>`;}
+function zirconSvg(){return`<svg viewBox="0 0 28 40" xmlns="http://www.w3.org/2000/svg"><path d="M14 1 C18 4 20 10 20 16 L20 27 L25 35 L20 33 L20 38 L14 40 L8 38 L8 33 L3 35 L8 27 L8 16 C8 10 10 4 14 1 Z" fill="#dc2626" stroke="#450a0a" stroke-width="1.3" stroke-linejoin="round"/></svg>`;}
+function impactSvg(){return`<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg"><circle cx="20" cy="20" r="9" fill="#dc2626"/><circle cx="20" cy="20" r="4" fill="#fbbf24"/></svg>`;}
+
+const TYPE_META={uav:{color:"#ffffff",label:"БПЛА",canRecolor:true},recon:{color:"#3b82f6",label:"Розв",baseColor:"#3b82f6"},geran2:{color:"#dc2626",label:"Герань-2",isGeran:true,baseColor:"#dc2626"},geran3:{color:"#dc2626",label:"Герань-3",isGeran:true,baseColor:"#dc2626"},geran4:{color:"#dc2626",label:"Герань-4",isGeran:true,baseColor:"#dc2626"},geran5:{color:"#b91c1c",label:"Герань-5",isGeran:true,baseColor:"#b91c1c"},jet_drone:{color:"#b91c1c",label:"Реакт. БПЛА",isJetDrone:true,baseColor:"#b91c1c"},fpv:{color:"#ca8a04",label:"FPV",canRecolor:true},missile:{color:"#dc2626",label:"КР",isMissile:true},ballistic:{color:"#b91c1c",label:"Бал",isMissile:true},zircon:{color:"#dc2626",label:"Циркон",isMissile:true},unknown:{color:"#475569",label:"?"}};
+const getMeta=t=>TYPE_META[t]||TYPE_META.unknown;
+function typeLabel(t){if(t._exactName)return t._exactName;if(t.type==="zircon")return"Циркон";if(t.type==="geran5")return"Герань-5";if(t.type==="geran4")return"Герань-4";if(t.type==="geran3")return"Герань-3";if(t.type==="geran2")return"Герань-2";const x=t.type;if(x==="missile")return"КР";if(x==="ballistic")return"Бал";if(x==="jet_drone")return"Реакт. БПЛА";if(x==="fpv")return"FPV";if(x==="uav")return"БПЛА";if(x==="recon")return"Розв";return"";}
+const SIZE_BASE=28;
+function confirmBadgeClass(n,tw){if(n>=5||tw>=8)return"max";if(n>=3||tw>=4.5)return"strong";if(n>=2&&tw>=2)return"";if(n>=2)return"medium";return"low";}
+function confirmBoostClass(n,tw){if(n>=5||tw>=8)return"confirm-5";if(n>=3||tw>=4.5)return"confirm-3";if(n>=2&&tw>=2)return"confirm-2";return"";}
+function iconColorFor(type){const meta=getMeta(type);if(type==="jet_drone"||type==="geran5")return"#dc2626";if(meta.canRecolor)return currentUavColor();if(meta.baseColor)return meta.baseColor;return meta.color;}
+function svgForType(type){const meta=getMeta(type);const col=iconColorFor(type);if(type==="fpv")return uavSvg(col);if(type==="zircon")return zirconSvg();if(type==="missile"||type==="ballistic")return rocketSvg(col);if(type==="recon")return reconSvg(meta.baseColor||"#3b82f6");if(type==="jet_drone")return jetDroneSvg("#dc2626");if(type==="geran2"||type==="geran3"||type==="geran4"||type==="geran5")return geranSvg(col);return uavSvg(col);}
+function makeIcon(cls,heading,confirmN,totalWeight,stale,uncertain,aiLevel,stage,inSiren,hasPriority,isSimulated){const svg=svgForType(cls.type);const rot=heading!=null?heading:0;const classes=["threat-icon"];if(cls._falling)classes.push("falling");if(stage==="threat")classes.push("threat-pulse");if(stale)classes.push("stale");if(uncertain)classes.push("uncertain");const boost=confirmBoostClass(confirmN,totalWeight);if(boost)classes.push(boost);if(hasPriority)classes.push("priority-star");let confirmHtml="";if(confirmN&&confirmN>=CONFIG.MIN_CHANNELS_CONFIRM){confirmHtml=`<div class="confirm-badge ${confirmBadgeClass(confirmN,totalWeight||0)}">${confirmN}</div>`;}const countHtml=cls._count?`<div class="count-badge">${cls._count}</div>`:"";return L.divIcon({className:"",html:`<div class="threat-wrap"><div class="threat-rotate" style="transform:rotate(${rot}deg)"><div class="${classes.join(" ")}">${svg}</div></div>${confirmHtml}${countHtml}</div>`,iconSize:[SIZE_BASE,SIZE_BASE],iconAnchor:[SIZE_BASE/2,SIZE_BASE/2],popupAnchor:[0,-SIZE_BASE/2]});}
+
+/* INFRA */
+function infraIconFor(kind,subtype){if(kind==="energy"){let emoji="⚡";if(subtype==="hydro")emoji="💧";else if(subtype==="nuclear")emoji="☢️";else if(subtype==="heat_power"||subtype==="power_plant")emoji="🏭";return L.divIcon({className:"infra-marker",html:`<div class="infra-energy">${emoji}</div>`,iconSize:[22,22],iconAnchor:[11,11]});}return null;}
+function buildEnergyPopup(e){return`<div class="popup-title" style="color:#fcd34d">⚡ ${esc(e.name)}</div><div class="popup-meta">Тип: <b>${esc(e.type)}</b><br>${esc(e.location||e.district||"—")}</div>`;}
+function rebuildInfraLayer(){if(!map||!infraLayer)return;infraLayer.clearLayers();infraMarkers=[];if(infraMode===0){if(map.hasLayer(infraLayer))map.removeLayer(infraLayer);return;}if(!map.hasLayer(infraLayer))infraLayer.addTo(map);for(const e of energyDatabase){const m=L.marker([e.lat,e.lng],{icon:infraIconFor("energy",e.type),zIndexOffset:210});m.bindPopup(buildEnergyPopup(e),CONFIG.POPUP_OPTS);m.addTo(infraLayer);infraMarkers.push(m);}for(const i of infrastructureObjects){const m=L.marker([i.lat,i.lng],{icon:infraIconFor("energy",i.type),zIndexOffset:215});m.bindPopup(buildEnergyPopup(i),CONFIG.POPUP_OPTS);m.addTo(infraLayer);infraMarkers.push(m);}}
+function cycleInfraMode(){infraMode=(infraMode+1)%2;try{localStorage.setItem(INFRA_MODE_KEY,String(infraMode));}catch(e){}const b=$("btnInfra");if(b){b.classList.remove("on");if(infraMode===1)b.classList.add("on");}rebuildInfraLayer();showToast(infraMode?"🏗 Інфраструктура УВІМК":"🏗 Інфраструктура ВИКЛ");}
+
+/* SETTLEMENTS */
+function buildSettlementsLayer(){if(!map||!settlementsLayer)return;settlementsLayer.clearLayers();settlementMarkers=[];const z=map.getZoom();if(z<6)return;const max=z>=11?9999:(z>=9?500:200);let count=0;for(const s of KYIV_OBLAST_SETTLEMENTS){if(count>=max)break;const name=s[0],lat=s[1],lon=s[2],type=s[4];let size="";if(type==="c")size="city";else if(type==="district"||type==="v")size="raion";const icon=L.divIcon({className:"settlement-marker",html:`<div class="settlement-dot ${size}"></div>`,iconSize:[8,8],iconAnchor:[4,4]});const m=L.marker([lat,lon],{icon,interactive:false,zIndexOffset:100});m.addTo(settlementsLayer);settlementMarkers.push(m);count++;}}
+function updateSettlementsVisibility(){if(!map||!settlementsLayer)return;const z=map.getZoom();if(settlementsVisible&&z>=6){if(!map.hasLayer(settlementsLayer))settlementsLayer.addTo(map);buildSettlementsLayer();}else{if(map.hasLayer(settlementsLayer))map.removeLayer(settlementsLayer);}}
+function toggleSettlementsLayer(){settlementsVisible=!settlementsVisible;try{localStorage.setItem(SETTLEMENTS_VIS_KEY,settlementsVisible?"1":"0");}catch(e){}const b=$("btnSettlements");if(b)b.classList.toggle("on",settlementsVisible);updateSettlementsVisibility();showToast(settlementsVisible?"🏘 Населені пункти УВІМК":"🏘 Населені пункти ВИКЛ");}
+function toggleStrategicLayer(){strategicVisible=!strategicVisible;try{localStorage.setItem(STRATEGIC_VIS_KEY,strategicVisible?"1":"0");}catch(e){}const b=$("btnStrategic");if(b)b.classList.toggle("on",strategicVisible);if(strategicVisible){if(strategicLayer&&!map.hasLayer(strategicLayer))strategicLayer.addTo(map);showToast("✈️ Стратегічна авіація УВІМК");}else{if(strategicLayer&&map.hasLayer(strategicLayer))map.removeLayer(strategicLayer);showToast("✈️ Стратегічна авіація ВИКЛ");}}
+if(map)map.on("zoomend",()=>{if(settlementsVisible)updateSettlementsVisibility();});
+
+const tracks=new Map();const msgMarkers=new Map();const impactMarkers=new Map();const activeWarnings=new Map();const strategicActivity=new Map();
+
+/* MASS */
+const MASS_TRIGGER_RE=new RegExp(["пуск[и]?\\s+реактивних\\s+з\\s+орл","пуски\\s+реактивних","залп[и]?\\s+реактивних","масован[а-яіїєґ]*\\s+пуск","підвіз\\s+балістичних","іскандер[-–\\s]?м","кн[-–\\s]?23","доставка\\s+реактивних\\s+бпла","доставка\\s+шахед"].join("|"),"i");
+function detectMassActivity(text){if(!text)return null;if(!MASS_TRIGGER_RE.test(text))return null;const lines=[];let title="МАСОВАНА ЗАГРОЗА";let icon="🚀";if(/пуск|залп|масован/i.test(text)&&/реактивн/i.test(text)){title="🚀 ПУСКИ РЕАКТИВНИХ БПЛА";icon="🚀";}if(/підвіз|іскандер|кн[-–\s]?23|балістичних/i.test(text)){title="🚀 ПІДВІЗ БАЛІСТИКИ";icon="🚀";if(/курськ|курск/i.test(text))lines.push("📍 <b>Курська обл.</b> — Іскандер-М");if(/брянськ|брянск/i.test(text))lines.push("📍 <b>Брянська обл.</b> — Іскандер-М");if(/воронеж/i.test(text))lines.push("📍 <b>Воронезька обл.</b> — KN-23");}if(/доставка|шахед|аеродром/i.test(text)&&/шахед|реактивн/i.test(text)){title="🛸 ДОСТАВКА ШАХЕДІВ";icon="🛸";}if(!lines.length)return null;return{title,icon,lines,text:text.slice(0,300)};}
+function showMassBanner(info){const el=$("massBanner");if(!el)return;const icon=$("massBannerIcon"),title=$("massBannerTitle"),l1=$("massBannerLine1"),l2=$("massBannerLine2"),l3=$("massBannerLine3");if(icon)icon.textContent=info.icon||"🚀";if(title)title.textContent=info.title||"МАСОВАНА ЗАГРОЗА";const lines=info.lines||[];if(l1){l1.innerHTML=lines[0]||"—";l1.style.display="block";}if(l2){l2.innerHTML=lines[1]||"";l2.style.display=lines[1]?"block":"none";}if(l3){l3.innerHTML=lines[2]||"";l3.style.display=lines[2]?"block":"none";}el.classList.add("show");massBannerActive=true;if(massBannerTimer)clearTimeout(massBannerTimer);massBannerTimer=setTimeout(()=>{hideMassBanner();},CONFIG.MASS_BANNER_TTL_MS);if(isPriorityChannel(info.channel||""))playAlertSound(true);scheduleFeedUpdate();}
+function hideMassBanner(){const el=$("massBanner");if(el)el.classList.remove("show");massBannerActive=false;if(massBannerTimer){clearTimeout(massBannerTimer);massBannerTimer=null;}}
+function processMassActivity(text,ch,msgMs){if(!text)return;if(!isPriorityChannel(ch)&&channelWeight(ch)<1.3)return;const info=detectMassActivity(text);if(!info)return;info.channel=ch;info.ts=msgMs;showMassBanner(info);}
+
+/* AUDIO */
+function initAudio(){if(audioCtx)return audioCtx;try{const Ctx=window.AudioContext||window.webkitAudioContext;if(!Ctx)return null;audioCtx=new Ctx();}catch(e){audioCtx=null;}return audioCtx;}
+function unlockAudio(){const c=initAudio();if(c&&c.state==="suspended")c.resume().catch(()=>{});}
+function playBell(){if(!audioCtx)return;const now=audioCtx.currentTime;[{f:880,g:.30,d:1.1},{f:1760,g:.14,d:.7}].forEach(p=>{const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type="sine";o.frequency.setValueAtTime(p.f,now);g.gain.setValueAtTime(.0001,now);g.gain.exponentialRampToValueAtTime(p.g,now+.012);g.gain.exponentialRampToValueAtTime(.0001,now+p.d);o.connect(g);g.connect(audioCtx.destination);o.start(now);o.stop(now+p.d+.05);});}
+function playAlertSound(force){if(!CONFIG.SOUND_ENABLED)return;const now=Date.now();if(!force&&now-lastSoundAt<4000)return;lastSoundAt=now;const c=initAudio();if(!c)return;try{if(c.state==="suspended")c.resume();playBell();}catch(e){}}
+function playSirenOnce(dur=3000){const c=initAudio();if(!c)return;if(c.state==="suspended")c.resume();const n=c.currentTime,d=dur/1000;const o=c.createOscillator(),g=c.createGain(),f=c.createBiquadFilter();o.type="sawtooth";o.frequency.setValueAtTime(440,n);o.frequency.linearRampToValueAtTime(880,n+d*.25);o.frequency.linearRampToValueAtTime(660,n+d*.6);o.frequency.linearRampToValueAtTime(440,n+d);f.type="bandpass";f.frequency.value=800;f.Q.value=3;g.gain.setValueAtTime(.0001,n);g.gain.linearRampToValueAtTime(.35,n+.1);g.gain.setValueAtTime(.35,n+d-.15);g.gain.linearRampToValueAtTime(.0001,n+d);o.connect(f);f.connect(g);g.connect(c.destination);o.start(n);o.stop(n+d+.05);}
+function flashSirenBtn(d){const b=$("sirenBtn");if(!b)return;b.classList.add("active");if(sirenActiveTimeout)clearTimeout(sirenActiveTimeout);sirenActiveTimeout=setTimeout(()=>b.classList.remove("active"),d||3000);}
+function triggerSirenSequence(dur=3000,times=1){const n=Math.max(1,times||1);flashSirenBtn(dur*n+(n-1)*250);for(let i=0;i<n;i++)setTimeout(()=>playSirenOnce(dur),i*(dur+250));}
+
+/* FEED */
+function feedIconFor(item){const t=item.cls?.type||"";if(item.kind==="mass")return"📡";if(t==="zircon"||t==="ballistic")return"🚨";if(t==="jet_drone")return"⚡";if(["geran2","geran3","geran4","geran5"].includes(t))return"🛸";if(t==="missile")return"🚀";if(t==="recon")return"👁";return"🛸";}
+function feedColorFor(item){const t=item.cls?.type||"";if(item.kind==="mass")return"#a78bfa";if(t==="zircon"||t==="ballistic")return"#d94a8c";if(["jet_drone","geran2","geran3","geran4","geran5"].includes(t))return"#dc2626";if(t==="missile")return"#e55757";return"#4ca9e8";}
+function collectFeedItems(){const out=[];for(const tr of tracks.values()){if(!tr.marker)continue;const ll=tr.marker.getLatLng();if(!ll)continue;out.push({kind:"api",id:"api:"+tr.threat.id,cls:{type:tr.threat.type,label:typeLabel(tr.threat)},name:tr.threat.locality||tr.threat.region||"—",lat:ll.lat,lng:ll.lng,ts:Date.now()});}if(massBannerActive){out.push({kind:"mass",id:"mass:banner",cls:{type:"mass",label:"МАСОВАНА АКТИВНІСТЬ"},name:$("massBannerTitle")?.textContent||"—",lat:null,lng:null,ts:Date.now()});}out.sort((a,b)=>b.ts-a.ts);return out;}
+function renderFeed(){const cont=$("events");const cnt=$("eventCount");if(!cont)return;const items=collectFeedItems();if(cnt)cnt.textContent=items.length+" подій";if(!items.length){cont.innerHTML=`<div class="panel-empty">Немає активних подій</div>`;return;}cont.innerHTML=items.slice(0,60).map((it,idx)=>{const color=feedColorFor(it);const icon=feedIconFor(it);const label=it.cls?.label||"";const time=new Date(it.ts).toLocaleTimeString("uk-UA",{hour:"2-digit",minute:"2-digit"});let tags="";if(it.kind==="mass")tags+=`<span class="tag mass">📡 МАСОВАНЕ</span>`;return`<div class="event" data-feed-idx="${idx}"><div class="event-top"><div class="event-type" style="color:${color}"><span class="event-icon">${icon}</span>${esc(label)}</div><div class="event-time">${time}</div></div><div class="event-loc">📍 ${esc(it.name||"—")}</div>${tags?`<div class="event-meta">${tags}</div>`:''}</div>`;}).join("");cont.querySelectorAll(".event").forEach(el=>{el.addEventListener("click",()=>{const idx=+el.getAttribute("data-feed-idx");const it=items[idx];if(!it)return;if(it.lat!=null)map.setView([it.lat,it.lng],11,{animate:true});});});}
+function scheduleFeedUpdate(){if(feedUpdateTimer)return;feedUpdateTimer=setTimeout(()=>{feedUpdateTimer=null;renderFeed();},300);}
+function setStatus(state,text){const dot=$("statusDot"),tt=$("statusText");if(!dot||!tt)return;dot.className="status-dot"+(state==="err"?" err":state==="warn"?" warn":"");tt.textContent=text||"ONLINE";}
+
+/* WS/REST */
+const wsState={threats:new Map()};
+function wsScheduleReconnect(){if(wsReconnectTimer)return;wsReconnectTimer=setTimeout(()=>{wsReconnectTimer=null;wsConnect();},wsReconnectMs);wsReconnectMs=Math.min(wsReconnectMs*2,CONFIG.WS_RECONNECT_MAX_MS);}
+function wsConnect(){try{if(ws){try{ws.close();}catch(e){}ws=null;}ws=new WebSocket(CONFIG.WS_URL);ws.onopen=()=>{wsConnected=true;wsReconnectMs=CONFIG.WS_RECONNECT_MS;restFallbackActive=false;stopRestPolling();updateLiveBadge("ok");};ws.onmessage=(e)=>{try{wsHandleFrame(JSON.parse(e.data));}catch(err){}};ws.onerror=()=>{};ws.onclose=()=>{wsConnected=false;ws=null;updateLiveBadge("err");if(!restFallbackActive){restFallbackActive=true;startRestPolling();}wsScheduleReconnect();};}catch(e){if(!restFallbackActive){restFallbackActive=true;startRestPolling();}wsScheduleReconnect();}}
+function wsHandleFrame(env){if(!env||!env.type)return;switch(env.type){case "snapshot":{const data=env.data||{};wsState.threats.clear();for(const t of (data.threats||[]))if(t.id)wsState.threats.set(t.id,t);applyThreatsFromWs();break;}case "upsert":{const t=env.data;if(t&&t.id){wsState.threats.set(t.id,t);applyThreatsFromWs();}break;}case "remove":{const data=env.data||{};if(data.id)wsState.threats.delete(data.id);applyThreatsFromWs();break;}}}
+function applyThreatsFromWs(){try{syncThreats([...wsState.threats.values()]);}catch(e){}}
+async function fetchMessages(){try{const r=await fetch(CONFIG.API_MESSAGES);if(!r.ok)throw 0;const d=await r.json();try{syncMessageThreats(d.messages||[]);}catch(e){}}catch(e){}}
+async function fetchThreatsAndAlerts(){try{if(abortCtrl)abortCtrl.abort();abortCtrl=new AbortController();const signal=abortCtrl.signal;const tr=await fetch(CONFIG.API_THREATS,{signal}).then(r=>{if(!r.ok)throw new Error("threats");return r.json();});try{syncThreats(tr.threats||[]);}catch(e){}updateLiveBadge("ok");}catch(e){if(e.name!=="AbortError")updateLiveBadge("err");}}
+async function restPollLoop(){await fetchThreatsAndAlerts();await fetchMessages();pollTimer=setTimeout(restPollLoop,CONFIG.POLL_MS);}
+function startRestPolling(){if(pollTimer)clearTimeout(pollTimer);restPollLoop();}
+function stopRestPolling(){if(pollTimer){clearTimeout(pollTimer);pollTimer=null;}if(abortCtrl){abortCtrl.abort();abortCtrl=null;}}
+function updateLiveBadge(state){if(state==="ok")setStatus(wsConnected?"ok":"warn",wsConnected?"ONLINE · WS":"ONLINE");else setStatus("err","ОФЛАЙН");}
+
+/* NORMALIZE */
+function normalizeThreat(t){const o={...t};const txt=[t.type,t.title,t.explanationShort].filter(Boolean).join(" ");const cls=CLASSIFIER(txt);if(cls?.isZircon){o.type="zircon";}else if(cls?.isJetDrone){o.type="jet_drone";}else if(cls?.isGeran5){o.type="geran5";}else if(cls?.isGeran){o.type=cls.type;}else if(cls&&!TYPE_META[t.type])o.type=cls.type;o._exactName=detectExactName(txt)||null;return o;}
+function resolveHeading(t){if(t.heading!=null)return t.heading;if(t.velocity?.bearingDeg!=null)return t.velocity.bearingDeg;return null;}
+function upsertThreat(raw){if(!threatLayer)return;try{const tx=normalizeThreat(raw);if(tx.lat==null||tx.lon==null)return;if(!inZone(tx.lat,tx.lon)){removeTrackInternal(tx.id);return;}let heading=resolveHeading(tx);if(heading==null)heading=bearingBetween(tx.lat,tx.lon,CONFIG.KYIV[0],CONFIG.KYIV[1]);const existing=tracks.get(tx.id);if(existing){existing.marker.setLatLng([tx.lat,tx.lon]);existing.threat=tx;}else{const marker=L.marker([tx.lat,tx.lon],{icon:makeIcon(tx,heading,0,0,false,false,null,null,false,false,false),zIndexOffset:800});marker.bindPopup(`<div class="popup-title type-${tx.type}">${esc(tx._exactName||typeLabel(tx))}</div><div class="popup-meta">${esc(tx.locality||tx.region||"—")}</div>`,CONFIG.POPUP_OPTS);marker.addTo(threatLayer);tracks.set(tx.id,{id:tx.id,marker,threat:tx,heading});scheduleFeedUpdate();}}catch(e){console.warn("upsertThreat",e);}}
+function syncThreats(list){const seen=new Set();for(const tx of list||[]){seen.add(tx.id);upsertThreat(tx);}for(const id of[...tracks.keys()])if(!seen.has(id))removeTrackInternal(id);}
+function removeTrackInternal(id){const tr=tracks.get(id);if(!tr)return;try{if(threatLayer)threatLayer.removeLayer(tr.marker);}catch(e){}tracks.delete(id);}
+function animate(){if(!animRunning||!map)return;rafId=requestAnimationFrame(animate);}
+function startAnim(){if(animRunning)return;animRunning=true;rafId=requestAnimationFrame(animate);}
+function stopAnim(){animRunning=false;if(rafId){cancelAnimationFrame(rafId);rafId=null;}}
+
+function syncMessageThreats(messages){const now=Date.now();for(const m of (messages||[])){const text=m.text||"";const ch=(m.channel||"unknown").replace(/^@/,"").toLowerCase();const msgMs=m.date?Date.parse(m.date):now;if(!text||text.length<8)continue;processMassActivity(text,ch,msgMs);}}
+function detectExactName(text){if(!text)return null;const t=text.toLowerCase();let m=t.match(/герань\s*-?\s*([2-5])\b/);if(m)return`Герань-${m[1]}`;if(/реактивн/.test(t)&&/(шахед|геран|бпла)/.test(t))return"Реактивний БПЛА";if(/циркон|zircon/.test(t))return"Циркон";if(/калибр|калібр/.test(t))return"Калібр";if(/кинжал|кінжал/.test(t))return"Кинжал";if(/іскандер|искандер/.test(t))return"Іскандер";if(/fpv|фпв/.test(t))return"FPV";return null;}
+const CLASSIFIER=(()=>{const HARD=[{re:/циркон|zircon/i,type:"zircon",isZircon:true},{re:/реактивн[а-яіїєґ]*\s*(шахед|геран|бпла|дрон)/i,type:"jet_drone",isJetDrone:true},{re:/герань\s*-?\s*5/i,type:"geran5",isGeran5:true,isGeran:true},{re:/герань\s*-?\s*4/i,type:"geran4",isGeran:true},{re:/герань\s*-?\s*3/i,type:"geran3",isGeran:true},{re:/герань\s*-?\s*2/i,type:"geran2",isGeran:true},{re:/балістик|баллистик|кинжал|іскандер|искандер|кн-?23/i,type:"ballistic"},{re:/калібр|калибр|х-?\s*101|х-?\s*555|крилат[аиі]?\s+ракет/i,type:"missile"}];const SOFT=[{re:/fpv|фпв/i,type:"fpv"},{re:/розвідник|разведчик|recon/i,type:"recon"},{re:/шахед|герань|бпла|дрон|безпілотник|реактив[а-яіїєґ]*/i,type:"uav"}];return function(t){t=t||"";for(const r of HARD)if(r.re.test(t))return{...r,hard:true};for(const r of SOFT)if(r.re.test(t))return{...r,hard:false};return null;};})();
+
+/* ============================================================
+   INIT
+============================================================ */
+$("btnRefresh").addEventListener("click",()=>{unlockAudio();if(wsConnected&&ws){try{ws.close();}catch(e){}wsConnect();}else startRestPolling();showToast("Оновлення…");});
+$("btnClear").addEventListener("click",()=>{unlockAudio();tracks.forEach(tr=>{try{threatLayer.removeLayer(tr.marker);}catch(e){}});tracks.clear();msgMarkers.clear();impactMarkers.clear();activeWarnings.clear();strategicActivity.clear();hideMassBanner();renderFeed();showToast("Очищено");});
+$("massBannerClose").addEventListener("click",()=>hideMassBanner());
+$("panelHeader").addEventListener("click",()=>{const p=$("panel");if(p)p.classList.toggle("collapsed");});
+(function(){const b=$("soundToggle");if(!b)return;function update(){b.textContent=CONFIG.SOUND_ENABLED?"🔔":"🔕";b.className="sound-btn "+(CONFIG.SOUND_ENABLED?"on":"muted");}update();let last=0;b.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();unlockAudio();const n=Date.now();playAlertSound(true);if(n-last<500){CONFIG.SOUND_ENABLED=!CONFIG.SOUND_ENABLED;update();showToast(CONFIG.SOUND_ENABLED?"🔔 увімк":"🔕 вимк");last=0;}else{last=n;showToast("🔔 тест");}});})();
+(function(){const b=$("sirenBtn");if(!b)return;let last=0;b.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();unlockAudio();const n=Date.now();if(n-last<500){triggerSirenSequence(3000,3);showToast("🚨 3× сирена");last=0;}else{playSirenOnce(3000);flashSirenBtn(3000);showToast("🚨 1×");last=n;}});})();
+(function(){const b=$("btnColorToggle");if(!b)return;const dot=$("uavColorDot");function update(){const c=UAV_COLORS[uavColorIdx];if(dot)dot.style.background=c.hex;}update();b.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();uavColorIdx=(uavColorIdx+1)%UAV_COLORS.length;saveUavColor();update();showToast("🎨 БПЛА: "+UAV_COLORS[uavColorIdx].name);unlockAudio();});})();
+(function(){const b=$("btnRingsToggle");if(!b||!map)return;function apply(){if(ringsVisible){if(!map.hasLayer(ringsLayer))ringsLayer.addTo(map);b.classList.add("on");b.classList.remove("off");}else{if(map.hasLayer(ringsLayer))map.removeLayer(ringsLayer);b.classList.add("off");b.classList.remove("on");}}apply();b.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();ringsVisible=!ringsVisible;try{localStorage.setItem(RINGS_KEY,ringsVisible?"1":"0");}catch(e2){}apply();showToast(ringsVisible?"🎯 Рамка УВІМК":"🎯 Рамка ВИКЛ");unlockAudio();});})();
+(function(){const b=$("btnMapToggle");if(!b||!map)return;b.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();unlockAudio();if(currentBase==="osm"){if(osmLayer)map.removeLayer(osmLayer);baseSat.addTo(map);currentBase="sat";b.classList.add("on");showToast("🛰 Супутник");}else{map.removeLayer(baseSat);osmLayer=L.tileLayer(CONFIG.TILE_URL,{maxZoom:16,attribution:CONFIG.TILE_ATTR});osmLayer.addTo(map);L.tileLayer(CONFIG.TILE_URL_REF,{maxZoom:16,opacity:.85}).addTo(map);currentBase="osm";b.classList.remove("on");showToast("🗺 Схема");}});})();
+(function(){const b=$("btnZoomUkraine");if(!b||!map)return;b.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();unlockAudio();map.fitBounds(CONFIG.UKRAINE_FIT_BOUNDS,{padding:[10,10]});showToast("🇺🇦 Вся Україна");});})();
+(function(){const b=$("btnSettlements");if(!b)return;if(settlementsVisible)b.classList.add("on");b.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();unlockAudio();toggleSettlementsLayer();});})();
+(function(){const b=$("btnStrategic");if(!b)return;if(strategicVisible)b.classList.add("on");b.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();unlockAudio();toggleStrategicLayer();});})();
+(function(){const b=$("btnInfra");if(!b)return;b.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();unlockAudio();cycleInfraMode();});})();
+(function(){const b=$("btnMass");if(!b)return;b.classList.toggle("on",massBannerActive);b.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();unlockAudio();if(massBannerActive)hideMassBanner();else showToast("📡 Очікування масових пусків…");});})();
+document.addEventListener("visibilitychange",()=>{if(document.hidden){stopRestPolling();stopAnim();}else{if(!wsConnected)startRestPolling();startAnim();unlockAudio();}});
+
+(async function init(){
+  try{
+    setStatus("warn","ЗАГРУЗКА…");
+    wsConnect();
+    fetchMessages();
+    setInterval(fetchMessages,5000);
+    startAnim();
+    renderFeed();
+    setInterval(renderFeed,8000);
+    setTimeout(()=>unlockAudio(),500);
+    updateSettlementsVisibility();
+    if(strategicVisible&&strategicLayer&&map&&!map.hasLayer(strategicLayer))strategicLayer.addTo(map);
+    const b=$("btnInfra");
+    if(b){
+      b.classList.remove("on");
+      if(infraMode>=1)b.classList.add("on");
+    }
+    if(infraMode>0)rebuildInfraLayer();
+  }catch(e){showErr("init: "+(e&&e.message||e));}
+})();
+</script>
+</body>
+</html>
